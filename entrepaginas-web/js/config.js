@@ -1,1 +1,1 @@
-const API_URL = "https://entrep-ginast.onrender.com";
+const API_URL = "https://entrepaginas-3pj8.onrender.com";
