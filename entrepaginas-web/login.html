@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EntrePáginas · Entrar</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Cabeçalho simples, só com o logo -->
+  <header class="topo">
+    <div class="container topo__barra">
+      <a href="index.html" class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>
+        EntrePáginas
+      </a>
+    </div>
+  </header>
+
+  <!-- Conteúdo da página -->
+  <main class="auth">
+    <!-- Abas "Entrar" e "Criar conta": cada uma mostra um dos formulários abaixo -->
+    <div class="auth__caixa">
+      <div class="abas">
+        <button class="ativo" data-aba="entrar">Entrar</button>
+        <button data-aba="cadastrar">Criar conta</button>
+      </div>
+
+      <form id="form-entrar" novalidate>
+        <div class="campo">
+          <label for="login-email">E-mail</label>
+          <input id="login-email" type="email" required autocomplete="email">
+          <span class="erro"></span>
+        </div>
+        <div class="campo">
+          <label for="login-senha">Senha</label>
+          <input id="login-senha" type="password" required autocomplete="current-password">
+          <span class="erro"></span>
+        </div>
+        <button class="btn btn--bloco" type="submit">Entrar</button>
+        <p class="auth__nota">Funcionários usam o mesmo acesso, com o e-mail corporativo.</p>
+        <details class="contas-teste">
+          <summary>Contas de teste</summary>
+          <p>Contas do banco. Senha de todas nesta versão: <code>123456</code></p>
+          <ul>
+            <li><button type="button" data-email="ana.souza@email.com">ana.souza@email.com</button> Cliente</li>
+            <li><button type="button" data-email="sergio.vieira@biblioteca.com">sergio.vieira@biblioteca.com</button> Atendente</li>
+            <li><button type="button" data-email="roberto.nogueira@biblioteca.com">roberto.nogueira@biblioteca.com</button> Administrador</li>
+          </ul>
+        </details>
+      </form>
+
+      <form id="form-cadastrar" class="oculto" novalidate>
+        <div class="campo">
+          <label for="cadastro-nome">Nome completo</label>
+          <input id="cadastro-nome" required autocomplete="name">
+          <span class="erro"></span>
+        </div>
+        <div class="linha-2">
+          <div class="campo">
+            <label for="cadastro-cpf">CPF</label>
+            <input id="cadastro-cpf" required inputmode="numeric" placeholder="000.000.000-00" maxlength="14" data-mascara="cpf">
+            <span class="erro"></span>
+          </div>
+          <div class="campo">
+            <label for="cadastro-telefone">Telefone</label>
+            <input id="cadastro-telefone" required inputmode="tel" placeholder="(11) 90000-0000" maxlength="15" data-mascara="telefone">
+            <span class="erro"></span>
+          </div>
+        </div>
+        <div class="campo">
+          <label for="cadastro-email">E-mail</label>
+          <input id="cadastro-email" type="email" required autocomplete="email">
+          <span class="erro"></span>
+        </div>
+        <div class="campo">
+          <label for="cadastro-senha">Senha</label>
+          <input id="cadastro-senha" type="password" required minlength="6" autocomplete="new-password">
+          <span class="erro"></span>
+        </div>
+        <button class="btn btn--bloco" type="submit">Criar conta</button>
+      </form>
+    </div>
+  </main>
+
+  <!-- Arquivos JS usados por todas as páginas (a ordem importa) -->
+  <script src="js/config.js"></script>
+  <script src="js/dados.js"></script>
+  <script src="js/banco.js"></script>
+  <script src="js/app.js"></script>
+  <!-- Código desta página -->
+  <script>
+    // Quem já está conectado não precisa ver o login: vai direto para a conta ou o painel.
+    // Proteção contra loop: se o login mandou a pessoa embora há menos de 3 segundos e ela
+    // voltou, a sessão guardada está estragada. Então ela é apagada e o login aparece.
+    const sessaoGuardada = Sessao.atual();
+    if (sessaoGuardada) {
+      const ehCliente = sessaoGuardada.tipo === "Cliente";
+      const paginaDaPessoa = ehCliente ? "conta.html" : "painel.html";
+      const paginaDeVolta = lerParametroDaUrl("voltar");
+      const paginaProibida = ehCliente ? "painel.html" : "conta.html";
+      const podeVoltar = !paginaDeVolta || paginaDeVolta !== paginaProibida;
+      let ultimoRedirecionamento = 0;
+      try { ultimoRedirecionamento = Number(sessionStorage.getItem("desvio_login")) || 0; } catch {}
+      if (Date.now() - ultimoRedirecionamento < 3000) {
+        Sessao.sair();
+        document.addEventListener("DOMContentLoaded", () => mostrarAviso("Sua sessão expirou. Entre novamente."));
+      } else if (podeVoltar) {
+        try { sessionStorage.setItem("desvio_login", Date.now()); } catch {}
+        window.location.replace(paginaDeVolta || paginaDaPessoa);
+      }
+    }
+
+    // "Contas de teste": clicar num e-mail preenche e-mail e senha.
+    document.querySelectorAll(".contas-teste button").forEach(botao => botao.addEventListener("click", () => {
+      document.getElementById("login-email").value = botao.dataset.email;
+      document.getElementById("login-senha").value = "123456";
+    }));
+
+    // Abas "Entrar" e "Criar conta".
+    document.querySelector(".abas").addEventListener("click", evento => {
+      const aba = evento.target.dataset.aba;
+      if (!aba) return;
+      document.querySelectorAll(".abas button").forEach(botao => botao.classList.toggle("ativo", botao === evento.target));
+      document.getElementById("form-entrar").classList.toggle("oculto", aba !== "entrar");
+      document.getElementById("form-cadastrar").classList.toggle("oculto", aba !== "cadastrar");
+    });
+
+    // Confere cada campo do formulário e escreve o erro embaixo dele. Devolve true se tudo estiver certo.
+    function formularioValido(formulario) {
+      let tudoCerto = true;
+      formulario.querySelectorAll("input").forEach(campo => {
+        let mensagem = "";
+        if (!campo.value.trim()) mensagem = "Campo obrigatório";
+        else if (campo.type === "email" && !/^\S+@\S+\.\S+$/.test(campo.value)) mensagem = "E-mail inválido";
+        else if (campo.id === "cadastro-cpf" && somenteDigitos(campo.value).length !== 11) mensagem = "CPF deve ter 11 dígitos";
+        else if (campo.id === "cadastro-telefone" && somenteDigitos(campo.value).length < 10) mensagem = "Telefone deve ter DDD e 8 ou 9 dígitos";
+        else if (campo.id === "cadastro-senha" && campo.value.length < 6) mensagem = "Mínimo de 6 caracteres";
+        campo.parentElement.querySelector(".erro").textContent = mensagem;
+        if (mensagem) tudoCerto = false;
+      });
+      return tudoCerto;
+    }
+
+    // Guarda a sessão e leva para a página de onde a pessoa veio (ou para a conta / painel).
+    function entrarELevarParaPagina(sessao) {
+      Sessao.entrar(sessao);
+      window.location.href = lerParametroDaUrl("voltar") || (sessao.tipo === "Cliente" ? "conta.html" : "painel.html");
+    }
+
+    // Entrar: o Java confere e-mail e senha no banco.
+    document.getElementById("form-entrar").addEventListener("submit", evento => {
+      evento.preventDefault();
+      if (!formularioValido(evento.target)) return;
+      const sessao = UsuarioDAO.autenticar(
+        document.getElementById("login-email").value.trim(),
+        document.getElementById("login-senha").value);
+      if (sessao) entrarELevarParaPagina(sessao);
+      else document.querySelector("#login-senha + .erro").textContent = "E-mail ou senha incorretos";
+    });
+
+    // Criar conta: grava o cliente no banco (CPF só com números, telefone já formatado).
+    document.getElementById("form-cadastrar").addEventListener("submit", evento => {
+      evento.preventDefault();
+      if (!formularioValido(evento.target)) return;
+      try {
+        const clienteNovo = UsuarioDAO.cadastrar({
+          nome: document.getElementById("cadastro-nome").value.trim(),
+          cpf: somenteDigitos(document.getElementById("cadastro-cpf").value),
+          telefone: formatarTelefone(document.getElementById("cadastro-telefone").value),
+          email_usuario: document.getElementById("cadastro-email").value.trim(),
+          senha: document.getElementById("cadastro-senha").value
+        });
+        entrarELevarParaPagina({ tipo: "Cliente", id: clienteNovo.id_usuario, nome: clienteNovo.nome });
+      } catch (erro) {
+        mostrarAviso(erro.message);
+      }
+    });
+  </script>
+</body>
+</html>

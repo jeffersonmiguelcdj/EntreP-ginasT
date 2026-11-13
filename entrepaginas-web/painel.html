@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EntrePáginas · Painel</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Cabeçalho do painel: logo, nome do funcionário e botão Sair -->
+  <header class="topo">
+    <div class="container topo__barra" style="max-width:none">
+      <a href="index.html" class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>
+        EntrePáginas
+      </a>
+      <div class="usuario-topo">
+        <span id="nome-usuario"></span>
+        <button class="btn btn--contorno btn--peq" id="sair">Sair</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Menu lateral (as seções com "so-admin" ficam escondidas para atendentes) -->
+  <div class="painel">
+    <nav class="painel__menu" id="menu">
+      <h3>Atendimento</h3>
+      <button data-secao="inicio" class="ativo">Visão geral</button>
+      <button data-secao="emprestimos">Empréstimos</button>
+      <button data-secao="multas">Multas</button>
+      <button data-secao="vendas">Vendas</button>
+      <button data-secao="clientes">Clientes</button>
+      <h3 class="so-admin">Administração</h3>
+      <button data-secao="livros" class="so-admin">Livros</button>
+      <button data-secao="exemplares" class="so-admin">Exemplares</button>
+    </nav>
+    <!-- Conteúdo da seção escolhida (preenchido pelo JavaScript) -->
+    <main class="painel__conteudo" id="conteudo"></main>
+  </div>
+
+  <!-- Janela usada nos formulários de livro e de cliente -->
+  <div class="modal oculto" id="modal"><div class="modal__caixa" id="modal-caixa"></div></div>
+
+  <!-- Arquivos JS usados por todas as páginas (a ordem importa) -->
+  <script src="js/config.js"></script>
+  <script src="js/dados.js"></script>
+  <script src="js/banco.js"></script>
+  <script src="js/app.js"></script>
+  <!-- Código desta página -->
+  <script>
+    // Painel só de funcionário. Cliente ou visitante vai para o login.
+    const sessao = Sessao.atual();
+    if (!sessao || sessao.tipo === "Cliente") window.location.href = "login.html?voltar=painel.html";
+    const ehAdministrador = sessao && sessao.tipo === "Admin";
+    if (sessao) document.getElementById("nome-usuario").innerHTML = `${sessao.nome} <span class="etiqueta etiqueta--ok">${ehAdministrador ? "Administrador" : "Atendente"}</span>`;
+    // Atendente não vê as seções de administração (Livros e Exemplares).
+    if (!ehAdministrador) document.querySelectorAll(".so-admin").forEach(elemento => elemento.classList.add("oculto"));
+
+    const campo = id => document.getElementById(id);
+    const areaDeConteudo = campo("conteudo");
+    const linhaVazia = (colunas, texto) => `<tr><td colspan="${colunas}" class="vazio">${texto}</td></tr>`;
+
+    // Atalhos para achar registros na cópia do banco.
+    const buscarExemplar = (banco, idExemplar) => banco.exemplares.find(exemplar => exemplar.id_exemplar === idExemplar);
+    const livroDoExemplar = (banco, idExemplar) => banco.livros.find(livro => livro.id_livro === buscarExemplar(banco, idExemplar).id_livro);
+    const buscarCliente = (banco, idCliente) => banco.usuarios.find(cliente => cliente.id_usuario === idCliente);
+    const estaAtrasado = emprestimo => emprestimo.status === "Em Andamento" && emprestimo.data_prevista_devolucao < dataDeHoje();
+    const exemplarAVenda = exemplar => exemplar.finalidade === "Venda" && exemplar.status === "Disponível";
+    // Cor da etiqueta de cada situação de exemplar.
+    const corDaSituacao = situacao => ({ "Disponível": "etiqueta--ok", "Emprestado": "etiqueta--info", "Vendido": "", "Manutenção": "etiqueta--alerta" }[situacao] || "");
+
+    // Executa uma gravação no banco. Se der certo, mostra a mensagem de sucesso;
+    // se o Java recusar, mostra o erro dele. Devolve true quando deu certo.
+    function executarAcao(acao, mensagemDeSucesso) {
+      try {
+        const resposta = acao();
+        if (mensagemDeSucesso) mostrarAviso(typeof mensagemDeSucesso === "function" ? mensagemDeSucesso(resposta) : mensagemDeSucesso);
+        return true;
+      } catch (erro) {
+        mostrarAviso(erro.message);
+        return false;
+      }
+    }
+
+    // Janela por cima da página (usada nos formulários de livro e de cliente).
+    function abrirJanela(html) { campo("modal-caixa").innerHTML = html; campo("modal").classList.remove("oculto"); }
+    function fecharJanela() { campo("modal").classList.add("oculto"); }
+    // Fecha ao clicar fora da janela ou no botão "Cancelar".
+    campo("modal").addEventListener("click", evento => {
+      if (evento.target.id === "modal" || evento.target.dataset.fechar !== undefined) fecharJanela();
+    });
+
+    // ----- Seções do painel: cada função devolve o HTML de uma seção do menu -----
+    const secoes = {
+      inicio() {
+        const banco = Banco.ler();
+        const emprestimosAtivos = banco.emprestimos.filter(emprestimo => emprestimo.status === "Em Andamento");
+        const multasPendentes = banco.multas.filter(multa => multa.status === "Pendente");
+        const vendasDeHoje = banco.vendas.filter(venda => venda.data_venda === dataDeHoje());
+        return `<div class="painel__titulo"><h1>Visão geral</h1></div>
+          <div class="resumo">
+            <div class="resumo__item"><span>Empréstimos ativos</span><strong>${emprestimosAtivos.length}</strong></div>
+            <div class="resumo__item"><span>Em atraso</span><strong>${emprestimosAtivos.filter(estaAtrasado).length}</strong></div>
+            <div class="resumo__item"><span>Multas pendentes</span><strong>${formatarPreco(multasPendentes.reduce((soma, multa) => soma + multa.valor, 0))}</strong></div>
+            <div class="resumo__item"><span>Vendas hoje</span><strong>${formatarPreco(vendasDeHoje.reduce((soma, venda) => soma + venda.valor_total, 0))}</strong></div>
+          </div>
+          <h2 style="font-family:var(--serif);font-weight:400;margin-bottom:12px">Devoluções em atraso</h2>
+          <div class="tabela-caixa"><table class="tabela"><thead><tr><th>Cliente</th><th>Livro</th><th>Devolver até</th><th>Atraso</th></tr></thead><tbody>
+          ${emprestimosAtivos.filter(estaAtrasado).map(emprestimo => `<tr>
+            <td>${buscarCliente(banco, emprestimo.id_usuario).nome}</td>
+            <td class="quebra">${livroDoExemplar(banco, emprestimo.id_exemplar).titulo}</td>
+            <td>${formatarData(emprestimo.data_prevista_devolucao)}</td>
+            <td><span class="etiqueta etiqueta--alerta">${diasEntre(emprestimo.data_prevista_devolucao, dataDeHoje())} dias</span></td></tr>`).join("") || linhaVazia(4, "Nenhum atraso. 🎉")}
+          </tbody></table></div>
+          <p class="auth__nota" style="text-align:left;margin-top:24px"><button class="btn btn--link" id="recarregar-dados">Recarregar dados do banco</button></p>`;
+      },
+
+      emprestimos() {
+        const banco = Banco.ler();
+        // Em andamento primeiro; dentro de cada grupo, os mais novos primeiro.
+        const ordemDaSituacao = emprestimo => emprestimo.status === "Em Andamento" ? 0 : 1;
+        const emprestimos = [...banco.emprestimos].sort((primeiro, segundo) =>
+          ordemDaSituacao(primeiro) - ordemDaSituacao(segundo) || segundo.id_emprestimo - primeiro.id_emprestimo);
+        return `<div class="painel__titulo"><h1>Empréstimos</h1></div>
+          <form class="form-linha" id="form-emprestimo">
+            <h3>Registrar empréstimo</h3>
+            <div class="campo"><label>CPF do cliente</label><input id="emprestimo-cpf" placeholder="000.000.000-00" inputmode="numeric" maxlength="14" data-mascara="cpf" required></div>
+            <div class="campo campo--largo"><label>Exemplar</label><input id="emprestimo-exemplar" placeholder="Digite o título do livro ou o código" required></div>
+            <button class="btn" type="submit">Registrar empréstimo</button>
+            <p class="dica">O prazo de devolução é de ${PRAZO_EMPRESTIMO} dias a partir de hoje.</p>
+          </form>
+          <div class="tabela-caixa"><table class="tabela"><thead><tr><th>#</th><th>Cliente</th><th>Livro</th><th>Exemplar</th><th>Retirada</th><th>Devolver até</th><th>Situação</th><th></th></tr></thead><tbody>
+          ${emprestimos.map(emprestimo => `<tr>
+            <td>${emprestimo.id_emprestimo}</td>
+            <td>${buscarCliente(banco, emprestimo.id_usuario).nome}</td>
+            <td class="quebra">${livroDoExemplar(banco, emprestimo.id_exemplar).titulo}</td>
+            <td>${buscarExemplar(banco, emprestimo.id_exemplar).codigo_patrimonial}</td>
+            <td>${formatarData(emprestimo.data_emprestimo)}</td>
+            <td>${formatarData(emprestimo.data_prevista_devolucao)}</td>
+            <td>${estaAtrasado(emprestimo) ? '<span class="etiqueta etiqueta--alerta">Atrasado</span>'
+                : emprestimo.status === "Em Andamento" ? '<span class="etiqueta etiqueta--info">Em andamento</span>'
+                : '<span class="etiqueta">Devolvido</span>'}</td>
+            <td class="acoes-linha">${emprestimo.status === "Em Andamento" ? `<button class="btn btn--peq btn--contorno" data-devolver="${emprestimo.id_emprestimo}">Registrar devolução</button>` : ""}</td></tr>`).join("") || linhaVazia(8, "Nenhum empréstimo.")}
+          </tbody></table></div>`;
+      },
+
+      multas() {
+        const banco = Banco.ler();
+        // Pendentes primeiro.
+        const multas = [...banco.multas].sort((primeira, segunda) => (primeira.status === "Pendente" ? 0 : 1) - (segunda.status === "Pendente" ? 0 : 1));
+        return `<div class="painel__titulo"><h1>Multas</h1><span class="etiqueta">${formatarPreco(MULTA_POR_DIA)} por dia de atraso</span></div>
+          <div class="tabela-caixa"><table class="tabela"><thead><tr><th>#</th><th>Cliente</th><th>Livro</th><th>Gerada em</th><th>Valor</th><th>Situação</th><th></th></tr></thead><tbody>
+          ${multas.map(multa => {
+            // A multa aponta para o empréstimo, que tem o cliente e o exemplar.
+            const emprestimo = banco.emprestimos.find(emprestimo => emprestimo.id_emprestimo === multa.id_emprestimo);
+            return `<tr>
+            <td>${multa.id_multa}</td>
+            <td>${buscarCliente(banco, emprestimo.id_usuario).nome}</td>
+            <td class="quebra">${livroDoExemplar(banco, emprestimo.id_exemplar).titulo}</td>
+            <td>${formatarData(multa.data_geracao)}</td>
+            <td>${formatarPreco(multa.valor)}</td>
+            <td>${multa.status === "Pendente" ? '<span class="etiqueta etiqueta--alerta">Pendente</span>' : `<span class="etiqueta etiqueta--ok">Paga em ${formatarData(multa.data_pagamento)}</span>`}</td>
+            <td class="acoes-linha">${multa.status === "Pendente" ? `<button class="btn btn--peq btn--contorno" data-pagar="${multa.id_multa}">Registrar pagamento</button>` : ""}</td></tr>`;
+          }).join("") || linhaVazia(7, "Nenhuma multa.")}
+          </tbody></table></div>`;
+      },
+
+      vendas() {
+        const banco = Banco.ler();
+        return `<div class="painel__titulo"><h1>Vendas</h1></div>
+          <form class="form-linha form-venda" id="form-venda">
+            <h3>Nova venda no balcão</h3>
+            <div class="campo"><label>CPF do cliente</label><input id="venda-cpf" placeholder="000.000.000-00" inputmode="numeric" maxlength="14" data-mascara="cpf" required><span class="dica" id="venda-cliente">Informe o CPF para começar</span></div>
+            <div class="campo"><label>Pagamento</label><select id="venda-pagamento">${FORMAS_PAGAMENTO.map(forma => `<option value="${forma.id_forma_pagamento}">${forma.tipo}</option>`).join("")}</select></div>
+            <div class="campo campo--largo"><label>Livro</label><input id="venda-livro" placeholder="Informe o CPF primeiro" disabled></div>
+            <button class="btn btn--contorno" type="button" id="venda-adicionar" disabled>Adicionar livro</button>
+            <div class="venda-itens" id="venda-itens"></div>
+            <button class="btn" type="submit">Registrar venda</button>
+          </form>
+          <div class="tabela-caixa"><table class="tabela"><thead><tr><th>#</th><th>Data</th><th>Cliente</th><th>Livros</th><th>Pagamento</th><th>Total</th></tr></thead><tbody>
+          ${[...banco.vendas].reverse().map(venda => `<tr>
+            <td>${venda.id_venda}</td>
+            <td>${formatarData(venda.data_venda)}</td>
+            <td>${buscarCliente(banco, venda.id_usuario).nome}</td>
+            <td class="quebra">${VendaDAO.itensDaVenda(venda.id_venda).map(item => livroDoExemplar(banco, item.id_exemplar).titulo).join(", ")}</td>
+            <td>${FORMAS_PAGAMENTO.find(forma => forma.id_forma_pagamento === venda.id_forma_pagamento).tipo}</td>
+            <td>${formatarPreco(venda.valor_total)}</td></tr>`).join("") || linhaVazia(6, "Nenhuma venda registrada.")}
+          </tbody></table></div>`;
+      },
+
+      clientes() {
+        const banco = Banco.ler();
+        // data-busca guarda nome + CPF em minúsculas, para o filtro da tabela.
+        return `<div class="painel__titulo"><h1>Clientes</h1>
+            <div class="barra-acoes"><input class="busca-tabela" id="filtro-cliente" placeholder="Buscar por nome ou CPF"><button class="btn" id="novo-cliente">Novo cliente</button></div></div>
+          <div class="tabela-caixa"><table class="tabela"><thead><tr><th>Nome</th><th>CPF</th><th>E-mail</th><th>Telefone</th><th>Empréstimos ativos</th></tr></thead><tbody id="corpo-clientes">
+          ${banco.usuarios.map(cliente => `<tr data-busca="${(cliente.nome + cliente.cpf).toLowerCase()}">
+            <td>${cliente.nome}</td>
+            <td>${formatarCpf(cliente.cpf)}</td>
+            <td>${cliente.email_usuario}</td>
+            <td>${formatarTelefone(cliente.telefone)}</td>
+            <td>${banco.emprestimos.filter(emprestimo => emprestimo.id_usuario === cliente.id_usuario && emprestimo.status === "Em Andamento").length}</td></tr>`).join("")}
+          </tbody></table></div>`;
+      },
+
+      livros() {
+        const banco = Banco.ler();
+        const livros = [...banco.livros].sort((livroA, livroB) => livroA.titulo.localeCompare(livroB.titulo));
+        return `<div class="painel__titulo"><h1>Livros</h1>
+            <div class="barra-acoes"><input class="busca-tabela" id="filtro-livro" placeholder="Buscar por título ou autor"><button class="btn" id="novo-livro">Novo livro</button></div></div>
+          <div class="tabela-caixa"><table class="tabela tabela--fixa">
+          <colgroup><col style="width:25%"><col style="width:19%"><col style="width:14%"><col style="width:10%"><col style="width:6%"><col style="width:11%"><col style="width:15%"></colgroup>
+          <thead><tr><th>Título</th><th>Autor(es)</th><th>Categoria</th><th>Preço</th><th>Qtd.</th><th>ISBN</th><th></th></tr></thead><tbody id="corpo-livros">
+          ${livros.map(livro => `<tr data-busca="${(livro.titulo + " " + livro.autores.join(" ")).toLowerCase()}">
+            <td title="ISBN ${livro.isbn} · ${livro.ano_publicacao}">${livro.titulo}</td>
+            <td title="${livro.autores.join(", ")}">${livro.autores.join(", ")}</td>
+            <td>${nomeDaCategoria(livro.id_categoria)}</td>
+            <td>${formatarPreco(livro.preco_venda)}</td>
+            <td>${banco.exemplares.filter(exemplar => exemplar.id_livro === livro.id_livro).length}</td>
+            <td>${livro.isbn}</td>
+            <td class="acoes-linha"><button class="btn btn--link" data-editar="${livro.id_livro}">Editar</button><button class="btn btn--link btn--perigo" data-remover-livro="${livro.id_livro}">Remover</button></td></tr>`).join("")}
+          </tbody></table></div>`;
+      },
+
+      exemplares() {
+        const banco = Banco.ler();
+        const tituloDoLivro = idLivro => (banco.livros.find(livro => livro.id_livro === idLivro) || { titulo: "(livro removido)" }).titulo;
+        const nomeDoFuncionario = idFuncionario => (banco.funcionarios.find(funcionario => funcionario.id_funcionario === idFuncionario) || { nome: "—" }).nome;
+
+        // Aplica os filtros escolhidos (busca por título, finalidade e situação).
+        const textoBuscado = filtrosDosExemplares.busca.trim().toLowerCase();
+        const exemplares = banco.exemplares
+          .filter(exemplar =>
+            (!textoBuscado || tituloDoLivro(exemplar.id_livro).toLowerCase().includes(textoBuscado)) &&
+            (!filtrosDosExemplares.finalidade || exemplar.finalidade === filtrosDosExemplares.finalidade) &&
+            (!filtrosDosExemplares.status || exemplar.status === filtrosDosExemplares.status))
+          .sort((primeiro, segundo) => segundo.id_exemplar - primeiro.id_exemplar);
+        const opcoesDoFiltro = (valores, escolhido) => valores.map(valor => `<option ${valor === escolhido ? "selected" : ""}>${valor}</option>`).join("");
+
+        return `<div class="painel__titulo"><h1>Exemplares</h1></div>
+          <form class="form-linha" id="form-exemplar">
+            <h3>Cadastrar exemplar</h3>
+            <div class="campo campo--largo"><label>Livro</label><input id="exemplar-livro" placeholder="Digite o título do livro" required></div>
+            <div class="campo"><label>Finalidade</label><select id="exemplar-finalidade"><option>Empréstimo</option><option>Venda</option></select></div>
+            <button class="btn" type="submit">Cadastrar</button>
+            <p class="dica">O código patrimonial (PAT-0000) é gerado automaticamente.</p>
+          </form>
+
+          <div class="barra-abas">
+            <div class="abas-conteudo">
+              <button type="button" class="ativo">Exemplares <span class="suave">${exemplares.length}</span></button>
+            </div>
+            <div class="filtros-compactos">
+              <span><input type="search" id="busca-exemplar" class="busca-compacta" placeholder="Buscar livro..." value="${filtrosDosExemplares.busca.replace(/"/g, "&quot;")}" aria-label="Buscar livro"></span>
+              <select data-filtro="finalidade" aria-label="Finalidade"><option value="">Toda finalidade</option>${opcoesDoFiltro(["Empréstimo", "Venda"], filtrosDosExemplares.finalidade)}</select>
+              <select data-filtro="status" aria-label="Situação"><option value="">Toda situação</option>${opcoesDoFiltro(["Disponível", "Emprestado", "Vendido", "Manutenção"], filtrosDosExemplares.status)}</select>
+            </div>
+          </div>
+
+          <div class="tabela-caixa"><table class="tabela tabela--fixa">
+            <colgroup><col style="width:14%"><col style="width:30%"><col style="width:13%"><col style="width:14%"><col style="width:19%"><col style="width:10%"></colgroup>
+            <thead><tr><th>Código</th><th>Livro</th><th>Finalidade</th><th>Situação</th><th>Cadastrado por</th><th></th></tr></thead><tbody>
+            ${exemplares.map(exemplar => `<tr>
+              <td>${exemplar.codigo_patrimonial}</td>
+              <td>${tituloDoLivro(exemplar.id_livro)}</td>
+              <td>${exemplar.finalidade}</td>
+              <td><span class="etiqueta ${corDaSituacao(exemplar.status)}">${exemplar.status}</span></td>
+              <td>${nomeDoFuncionario(exemplar.id_funcionario)}</td>
+              <td class="acoes-linha">${exemplar.status === "Disponível" ? `<button class="btn btn--link btn--perigo" data-remover-exemplar="${exemplar.id_exemplar}">Remover</button>` : ""}</td></tr>`).join("") || linhaVazia(6, "Nenhum exemplar com esses filtros.")}
+            </tbody></table></div>`;
+      }
+    };
+
+    // ----- Troca de seção -----
+    let secaoAberta = "inicio";
+    let filtrosDosExemplares = { busca: "", finalidade: "", status: "" };
+    let livrosDaVenda = []; // ids dos livros da venda de balcão em andamento
+
+    function abrirSecao(secao) {
+      if (["livros", "exemplares"].includes(secao) && !ehAdministrador) secao = "inicio";
+      secaoAberta = secao;
+      document.querySelectorAll("#menu button").forEach(botao => botao.classList.toggle("ativo", botao.dataset.secao === secao));
+      areaDeConteudo.innerHTML = secoes[secao]();
+      if (secao === "vendas") { livrosDaVenda = []; mostrarLivrosDaVenda(); }
+      ligarSugestoes();
+    }
+    // Redesenha a seção aberta (usado depois de cada gravação).
+    const atualizarSecao = () => abrirSecao(secaoAberta);
+
+    // Liga as sugestões nos campos da seção aberta (campos que não existem são ignorados).
+    function ligarSugestoes() {
+      const banco = Banco.ler();
+      const opcoesDeLivros = livros => livros.map(livro => ({ valor: livro.titulo, rotulo: livro.titulo, detalhe: livro.autores.join(", ") }));
+      // Empréstimo: exemplares livres para empréstimo (o campo recebe o código PAT-0000).
+      ativarSugestoes(campo("emprestimo-exemplar"), banco.exemplares
+        .filter(exemplar => exemplar.finalidade === "Empréstimo" && exemplar.status === "Disponível")
+        .map(exemplar => ({ valor: exemplar.codigo_patrimonial, rotulo: livroDoExemplar(banco, exemplar.id_exemplar).titulo, detalhe: exemplar.codigo_patrimonial })));
+      // Venda: livros que têm exemplar à venda.
+      ativarSugestoes(campo("venda-livro"), banco.livros
+        .filter(livro => banco.exemplares.some(exemplar => exemplar.id_livro === livro.id_livro && exemplarAVenda(exemplar)))
+        .map(livro => ({ valor: livro.titulo, rotulo: livro.titulo, detalhe: formatarPreco(livro.preco_venda) })));
+      ativarSugestoes(campo("exemplar-livro"), opcoesDeLivros(banco.livros));
+      ativarSugestoes(campo("busca-exemplar"), opcoesDeLivros(banco.livros), opcao => { filtrosDosExemplares.busca = opcao.valor; atualizarSecao(); });
+    }
+
+    campo("menu").addEventListener("click", evento => evento.target.dataset.secao && abrirSecao(evento.target.dataset.secao));
+    campo("sair").addEventListener("click", () => { Sessao.sair(); window.location.replace("index.html"); });
+
+    // ----- Venda de balcão -----
+    // Coloca o livro digitado na lista da venda, sem passar do estoque.
+    function adicionarLivroNaVenda() {
+      if (!UsuarioDAO.buscarPorCpf(campo("venda-cpf").value)) return mostrarAviso("Informe o CPF de um cliente cadastrado primeiro");
+      const banco = Banco.ler();
+      const campoDoLivro = campo("venda-livro");
+      const livro = banco.livros.find(livro => livro.titulo.toLowerCase() === campoDoLivro.value.trim().toLowerCase());
+      if (!livro) return mostrarAviso("Escolha um livro da lista de sugestões");
+      const estoque = banco.exemplares.filter(exemplar => exemplar.id_livro === livro.id_livro && exemplarAVenda(exemplar)).length;
+      if (livrosDaVenda.filter(idLivro => idLivro === livro.id_livro).length >= estoque) {
+        return mostrarAviso(estoque ? `Só há ${estoque} ${estoque === 1 ? "exemplar" : "exemplares"} de “${livro.titulo}” para venda` : "Livro sem estoque para venda");
+      }
+      livrosDaVenda.push(livro.id_livro);
+      campoDoLivro.value = "";
+      mostrarAviso(`“${livro.titulo}” adicionado à venda`);
+      mostrarLivrosDaVenda();
+    }
+
+    // Mostra os livros da venda (com "× 2" quando repetidos) e o total.
+    function mostrarLivrosDaVenda() {
+      const banco = Banco.ler();
+      const buscarLivro = idLivro => banco.livros.find(livro => livro.id_livro === idLivro);
+      const total = livrosDaVenda.reduce((soma, idLivro) => soma + buscarLivro(idLivro).preco_venda, 0);
+      const livrosSemRepetir = [...new Set(livrosDaVenda)];
+      campo("venda-itens").innerHTML = livrosDaVenda.length
+        ? livrosSemRepetir.map(idLivro => {
+            const quantidade = livrosDaVenda.filter(id => id === idLivro).length;
+            return `<span class="etiqueta">${buscarLivro(idLivro).titulo}${quantidade > 1 ? ` <strong>× ${quantidade}</strong>` : ""} <button type="button" class="tirar-item" aria-label="Tirar um" data-tirar="${livrosDaVenda.lastIndexOf(idLivro)}">×</button></span>`;
+          }).join("") + `<strong style="margin-left:6px">Total: ${formatarPreco(total)}</strong>`
+        : `<span style="color:var(--texto-suave);font-size:.9rem">Nenhum livro adicionado.</span>`;
+    }
+
+    // ----- Formulários em janela -----
+    // Novo livro (sem parâmetro) ou edição de um livro existente.
+    function abrirFormularioDeLivro(livro = {}) {
+      abrirJanela(`<h2>${livro.id_livro ? "Editar livro" : "Novo livro"}</h2>
+        <form id="form-livro">
+          <div class="campo"><label>Título</label><input id="livro-titulo" value="${livro.titulo || ""}" required></div>
+          <div class="campo"><label>Autor(es), separados por vírgula</label><input id="livro-autores" value="${(livro.autores || []).join(", ")}" required></div>
+          <div class="linha-2">
+            <div class="campo"><label>Categoria</label><select id="livro-categoria">${CATEGORIAS.map(categoria => `<option value="${categoria.id_categoria}" ${categoria.id_categoria === livro.id_categoria ? "selected" : ""}>${categoria.nome}</option>`).join("")}</select></div>
+            <div class="campo"><label>Ano</label><input id="livro-ano" type="number" value="${livro.ano_publicacao || ""}" required></div>
+          </div>
+          <div class="linha-2">
+            <div class="campo"><label>ISBN</label><input id="livro-isbn" maxlength="13" value="${livro.isbn || ""}" required></div>
+            <div class="campo"><label>Preço de venda</label><input id="livro-preco" type="number" step="0.01" min="0" value="${livro.preco_venda || ""}" required></div>
+          </div>
+          <div class="modal__botoes"><button type="button" class="btn btn--contorno" data-fechar>Cancelar</button><button class="btn" type="submit">Salvar</button></div>
+        </form>`);
+      campo("form-livro").addEventListener("submit", evento => {
+        evento.preventDefault();
+        const salvou = executarAcao(() => LivroDAO.salvar({
+          id_livro: livro.id_livro, // vazio = livro novo
+          titulo: campo("livro-titulo").value.trim(),
+          autores: campo("livro-autores").value.split(",").map(autor => autor.trim()).filter(Boolean),
+          id_categoria: Number(campo("livro-categoria").value),
+          ano_publicacao: Number(campo("livro-ano").value),
+          isbn: campo("livro-isbn").value.trim(),
+          preco_venda: Number(campo("livro-preco").value)
+        }), "Livro salvo");
+        if (salvou) { fecharJanela(); atualizarSecao(); }
+      });
+    }
+
+    // Cadastro de cliente feito pelo funcionário.
+    function abrirFormularioDeCliente() {
+      abrirJanela(`<h2>Novo cliente</h2>
+        <form id="form-cliente">
+          <div class="campo"><label>Nome completo</label><input id="cliente-nome" required></div>
+          <div class="linha-2">
+            <div class="campo"><label>CPF</label><input id="cliente-cpf" placeholder="000.000.000-00" inputmode="numeric" maxlength="14" data-mascara="cpf" required></div>
+            <div class="campo"><label>Telefone</label><input id="cliente-telefone" placeholder="(11) 90000-0000" inputmode="tel" maxlength="15" data-mascara="telefone" required></div>
+          </div>
+          <div class="campo"><label>E-mail</label><input id="cliente-email" type="email" required></div>
+          <div class="campo"><label>Senha inicial</label><input id="cliente-senha" type="password" minlength="6" required></div>
+          <div class="modal__botoes"><button type="button" class="btn btn--contorno" data-fechar>Cancelar</button><button class="btn" type="submit">Cadastrar</button></div>
+        </form>`);
+      campo("form-cliente").addEventListener("submit", evento => {
+        evento.preventDefault();
+        const cpf = somenteDigitos(campo("cliente-cpf").value);
+        if (cpf.length !== 11) return mostrarAviso("CPF deve ter 11 dígitos");
+        if (somenteDigitos(campo("cliente-telefone").value).length < 10) return mostrarAviso("Telefone deve ter DDD e 8 ou 9 dígitos");
+        const cadastrou = executarAcao(() => UsuarioDAO.cadastrar({
+          nome: campo("cliente-nome").value.trim(),
+          cpf,
+          telefone: formatarTelefone(campo("cliente-telefone").value),
+          email_usuario: campo("cliente-email").value.trim(),
+          senha: campo("cliente-senha").value
+        }), "Cliente cadastrado");
+        if (cadastrou) { fecharJanela(); atualizarSecao(); }
+      });
+    }
+
+    // ----- Cliques nos botões das seções -----
+    // Os botões são recriados a cada atualização, então um único "ouvinte" na área de conteúdo
+    // descobre qual botão foi clicado pelos atributos data-... dele.
+    areaDeConteudo.addEventListener("click", evento => {
+      const botao = evento.target.dataset;
+      if (botao.devolver) {
+        // O Java calcula a multa se houve atraso.
+        executarAcao(() => EmprestimoDAO.devolver(Number(botao.devolver)),
+          multa => multa ? `Devolvido com atraso: multa de ${formatarPreco(multa.valor)} gerada` : "Devolução registrada") && atualizarSecao();
+      }
+      else if (botao.pagar) executarAcao(() => MultaDAO.pagar(Number(botao.pagar)), "Pagamento registrado") && atualizarSecao();
+      else if (botao.editar) abrirFormularioDeLivro(LivroDAO.buscar(Number(botao.editar)));
+      else if (botao.removerLivro) confirm("Remover este livro?") && executarAcao(() => LivroDAO.remover(Number(botao.removerLivro)), "Livro removido") && atualizarSecao();
+      else if (botao.removerExemplar) executarAcao(() => ExemplarDAO.remover(Number(botao.removerExemplar)), "Exemplar removido") && atualizarSecao();
+      else if (botao.tirar) { livrosDaVenda.splice(Number(botao.tirar), 1); mostrarLivrosDaVenda(); }
+      else if (evento.target.id === "novo-livro") abrirFormularioDeLivro();
+      else if (evento.target.id === "novo-cliente") abrirFormularioDeCliente();
+      else if (evento.target.id === "venda-adicionar") adicionarLivroNaVenda();
+      else if (evento.target.id === "recarregar-dados") { Banco.limpar(); location.reload(); }
+    });
+
+    // Enter no campo de livro da venda adiciona o livro (em vez de enviar a venda).
+    areaDeConteudo.addEventListener("keydown", evento => {
+      if (evento.target.id === "venda-livro" && evento.key === "Enter") { evento.preventDefault(); adicionarLivroNaVenda(); }
+    });
+
+    // ----- Envio dos formulários de empréstimo, venda e exemplar -----
+    areaDeConteudo.addEventListener("submit", evento => {
+      evento.preventDefault();
+      const formulario = evento.target.id;
+
+      if (formulario === "form-emprestimo") {
+        executarAcao(() => EmprestimoDAO.registrar(campo("emprestimo-cpf").value, campo("emprestimo-exemplar").value, sessao.id),
+          emprestimo => `Empréstimo registrado. Devolver até ${formatarData(emprestimo.data_prevista_devolucao)}`) && atualizarSecao();
+      }
+
+      if (formulario === "form-venda") {
+        const cliente = UsuarioDAO.buscarPorCpf(campo("venda-cpf").value);
+        if (!cliente) return mostrarAviso("Cliente não encontrado");
+        executarAcao(() => VendaDAO.registrar(cliente.id_usuario, livrosDaVenda, Number(campo("venda-pagamento").value), sessao.id),
+          venda => `Venda #${venda.id_venda} registrada: ${formatarPreco(venda.valor_total)}`) && atualizarSecao();
+      }
+
+      if (formulario === "form-exemplar") {
+        executarAcao(() => {
+          const tituloDigitado = campo("exemplar-livro").value.trim().toLowerCase();
+          const livro = Banco.ler().livros.find(livro => livro.titulo.toLowerCase() === tituloDigitado);
+          if (!livro) throw new Error("Escolha um livro da lista de sugestões");
+          return ExemplarDAO.cadastrar(livro.id_livro, campo("exemplar-finalidade").value, sessao.id);
+        }, exemplar => `Exemplar ${exemplar.codigo_patrimonial} cadastrado`) && atualizarSecao();
+      }
+    });
+
+    // Filtros de finalidade e situação dos exemplares.
+    areaDeConteudo.addEventListener("change", evento => {
+      const filtro = evento.target.dataset.filtro;
+      if (!filtro) return;
+      filtrosDosExemplares[filtro] = evento.target.value;
+      atualizarSecao();
+    });
+
+    // ----- Reações enquanto a pessoa digita -----
+    areaDeConteudo.addEventListener("input", evento => {
+      // CPF da venda: mostra o nome do cliente e libera o campo de livro.
+      if (evento.target.id === "venda-cpf") {
+        const cliente = UsuarioDAO.buscarPorCpf(evento.target.value);
+        const cpfCompleto = somenteDigitos(evento.target.value).length === 11;
+        const recado = campo("venda-cliente");
+        recado.textContent = cliente ? `Cliente: ${cliente.nome}` : cpfCompleto ? "CPF não cadastrado" : "Informe o CPF para começar";
+        recado.classList.toggle("dica--ok", !!cliente);
+        recado.classList.toggle("dica--erro", !cliente && cpfCompleto);
+        campo("venda-livro").disabled = !cliente;
+        campo("venda-adicionar").disabled = !cliente;
+        campo("venda-livro").placeholder = cliente ? "Digite o título do livro" : "Informe o CPF primeiro";
+        if (!cliente && livrosDaVenda.length) { livrosDaVenda = []; mostrarLivrosDaVenda(); }
+        return;
+      }
+      // Busca dos exemplares: refaz a tabela e devolve o cursor para o fim do campo.
+      if (evento.target.id === "busca-exemplar") {
+        filtrosDosExemplares.busca = evento.target.value;
+        atualizarSecao();
+        const campoDeBusca = campo("busca-exemplar");
+        campoDeBusca.focus();
+        campoDeBusca.setSelectionRange(campoDeBusca.value.length, campoDeBusca.value.length);
+        return;
+      }
+      // Filtros das tabelas de clientes e livros: esconde as linhas que não combinam.
+      const idDaTabela = evento.target.id === "filtro-cliente" ? "corpo-clientes" : evento.target.id === "filtro-livro" ? "corpo-livros" : null;
+      if (!idDaTabela) return;
+      const textoDigitado = evento.target.value.toLowerCase().replace(/[.\-]/g, "");
+      campo(idDaTabela).querySelectorAll("tr").forEach(linha => linha.classList.toggle("oculto", !linha.dataset.busca.includes(textoDigitado)));
+    });
+
+    if (sessao) abrirSecao(lerParametroDaUrl("secao") || "inicio");
+  </script>
+</body>
+</html>

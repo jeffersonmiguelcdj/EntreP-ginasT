@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EntrePáginas · Início</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Cabeçalho: logo, menu Categorias, busca, carrinho e conta -->
+  <header class="topo">
+    <div class="container topo__barra">
+      <a href="index.html" class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>
+        EntrePáginas
+      </a>
+      <div class="menu-cat" id="menu-cat">
+        <button class="menu-cat__botao" type="button" aria-expanded="false" aria-controls="painel-cat">
+          Categorias
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="menu-cat__painel" id="painel-cat">
+          <div class="container menu-cat__conteudo">
+            <div>
+              <h3>Explorar</h3>
+              <ul>
+                <li><a href="catalogo.html">Todos os livros</a></li>
+                <li><a href="catalogo.html?ordem=recentes">Novidades</a></li>
+                <li><a href="catalogo.html?ordem=menor">Menores preços</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3>Categorias</h3>
+              <ul class="menu-cat__lista" id="lista-categorias"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <form class="busca" action="catalogo.html" method="get" role="search">
+        <input type="search" name="q" placeholder="Buscar por título ou autor" aria-label="Buscar">
+        <button type="submit" aria-label="Buscar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        </button>
+      </form>
+      <nav class="acoes">
+        <a href="carrinho.html" class="icone-btn" aria-label="Carrinho">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>
+          <span id="contador-carrinho" class="contador oculto">0</span>
+        </a>
+        <a href="login.html" class="icone-btn" id="link-conta" aria-label="Minha conta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+        </a>
+      </nav>
+    </div>
+  </header>
+  <!-- Conteúdo da página -->
+  <main class="container">
+    <section class="banner">
+      <div>
+        <h1>Leia sem pressa.<br>Empreste ou leve para casa.</h1>
+        <p>Consulte o acervo, veja o que está disponível para empréstimo e compre seus livros favoritos.</p>
+        <a href="catalogo.html" class="btn btn--claro">Explorar o catálogo</a>
+      </div>
+      <div class="banner__livros" id="banner-livros"></div>
+    </section>
+
+    <section class="secao">
+      <div class="secao__titulo">
+        <h2>Novidades no acervo</h2>
+        <a href="catalogo.html">Ver todos →</a>
+      </div>
+      <div class="grade" id="novidades"></div>
+    </section>
+
+    <section class="secao">
+      <div class="secao__titulo">
+        <h2>Literatura Brasileira</h2>
+        <a href="catalogo.html?categoria=8">Ver todos →</a>
+      </div>
+      <div class="grade" id="classicos"></div>
+    </section>
+  </main>
+  <!-- Rodapé -->
+  <footer class="rodape">
+    <div class="container">
+      <span>© 2026 EntrePáginas · Empréstimo e venda de livros</span>
+      <span>Retirada e devolução de empréstimos no balcão</span>
+    </div>
+  </footer>
+  <!-- Arquivos JS usados por todas as páginas (a ordem importa) -->
+  <script src="js/config.js"></script>
+  <script src="js/dados.js"></script>
+  <script src="js/banco.js"></script>
+  <script src="js/app.js"></script>
+  <!-- Código desta página -->
+  <script>
+    // Vitrine "Novidades": os 4 livros com ano de publicação mais recente.
+    const livrosMaisRecentes = [...LIVROS].sort((livroA, livroB) => livroB.ano_publicacao - livroA.ano_publicacao).slice(0, 4);
+    document.getElementById("novidades").innerHTML = livrosMaisRecentes.map(htmlCartao).join("");
+
+    // Vitrine "Literatura Brasileira": 4 livros da categoria 8.
+    const ID_LITERATURA_BRASILEIRA = 8;
+    document.getElementById("classicos").innerHTML = LIVROS
+      .filter(livro => livro.id_categoria === ID_LITERATURA_BRASILEIRA)
+      .slice(0, 4).map(htmlCartao).join("");
+
+    // Três capas de enfeite no banner (livros 8, 1 e 5, se existirem no banco).
+    document.getElementById("banner-livros").innerHTML = [8, 1, 5]
+      .map(idLivro => LIVROS.find(livro => livro.id_livro === idLivro))
+      .filter(Boolean).map(htmlCapa).join("");
+  </script>
+</body>
+</html>

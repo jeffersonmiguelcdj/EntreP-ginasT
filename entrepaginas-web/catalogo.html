@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EntrePáginas · Catálogo</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Cabeçalho: logo, menu Categorias, busca, carrinho e conta -->
+  <header class="topo">
+    <div class="container topo__barra">
+      <a href="index.html" class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>
+        EntrePáginas
+      </a>
+      <div class="menu-cat" id="menu-cat">
+        <button class="menu-cat__botao" type="button" aria-expanded="false" aria-controls="painel-cat">
+          Categorias
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="menu-cat__painel" id="painel-cat">
+          <div class="container menu-cat__conteudo">
+            <div>
+              <h3>Explorar</h3>
+              <ul>
+                <li><a href="catalogo.html">Todos os livros</a></li>
+                <li><a href="catalogo.html?ordem=recentes">Novidades</a></li>
+                <li><a href="catalogo.html?ordem=menor">Menores preços</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3>Categorias</h3>
+              <ul class="menu-cat__lista" id="lista-categorias"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <form class="busca" action="catalogo.html" method="get" role="search">
+        <input type="search" name="q" placeholder="Buscar por título ou autor" aria-label="Buscar">
+        <button type="submit" aria-label="Buscar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        </button>
+      </form>
+      <nav class="acoes">
+        <a href="carrinho.html" class="icone-btn" aria-label="Carrinho">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>
+          <span id="contador-carrinho" class="contador oculto">0</span>
+        </a>
+        <a href="login.html" class="icone-btn" id="link-conta" aria-label="Minha conta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+        </a>
+      </nav>
+    </div>
+  </header>
+  <!-- Conteúdo da página -->
+  <main class="container">
+    <div class="cabecalho-pagina">
+      <h1 id="titulo-catalogo">Catálogo</h1>
+      <p id="resumo-catalogo"></p>
+    </div>
+
+    <div class="filtros">
+      <div class="chips" id="chips"></div>
+      <select class="select" id="ordem" aria-label="Ordenar">
+        <option value="titulo">Ordenar: título (A–Z)</option>
+        <option value="recentes">Mais recentes</option>
+        <option value="menor">Menor preço</option>
+        <option value="maior">Maior preço</option>
+      </select>
+    </div>
+
+    <div class="grade grade--6" id="resultado"></div>
+    <div class="paginacao" id="paginacao"></div>
+  </main>
+  <!-- Rodapé -->
+  <footer class="rodape">
+    <div class="container">
+      <span>© 2026 EntrePáginas · Empréstimo e venda de livros</span>
+      <span>Retirada e devolução de empréstimos no balcão</span>
+    </div>
+  </footer>
+  <!-- Arquivos JS usados por todas as páginas (a ordem importa) -->
+  <script src="js/config.js"></script>
+  <script src="js/dados.js"></script>
+  <script src="js/banco.js"></script>
+  <script src="js/app.js"></script>
+  <!-- Código desta página -->
+  <script>
+    const LIVROS_POR_PAGINA = 18;
+
+    // Deixa o texto sem acento e em minúsculas, para "jose" achar "José".
+    const semAcento = texto => texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+    // O que veio no endereço: catalogo.html?q=machado ou catalogo.html?categoria=3
+    const textoBuscado = semAcento((lerParametroDaUrl("q") || "").trim());
+    let categoriaEscolhida = Number(lerParametroDaUrl("categoria")) || 0; // 0 = todas
+    let paginaAtual = 1;
+
+    // Devolve os livros que combinam com a busca e a categoria, já na ordem escolhida.
+    function livrosFiltrados() {
+      const encontrados = LIVROS.filter(livro =>
+        (!categoriaEscolhida || livro.id_categoria === categoriaEscolhida) &&
+        (!textoBuscado || semAcento(livro.titulo).includes(textoBuscado) ||
+                          livro.autores.some(autor => semAcento(autor).includes(textoBuscado)))
+      );
+      const formasDeOrdenar = {
+        titulo: (livroA, livroB) => livroA.titulo.localeCompare(livroB.titulo),
+        recentes: (livroA, livroB) => livroB.ano_publicacao - livroA.ano_publicacao,
+        menor: (livroA, livroB) => livroA.preco_venda - livroB.preco_venda,
+        maior: (livroA, livroB) => livroB.preco_venda - livroA.preco_venda
+      };
+      return encontrados.sort(formasDeOrdenar[document.getElementById("ordem").value]);
+    }
+
+    // Redesenha título, livros da página atual, botões de categoria e paginação.
+    function mostrarCatalogo() {
+      const livros = livrosFiltrados();
+      const totalDePaginas = Math.max(1, Math.ceil(livros.length / LIVROS_POR_PAGINA));
+      paginaAtual = Math.min(paginaAtual, totalDePaginas);
+      const livrosDaPagina = livros.slice((paginaAtual - 1) * LIVROS_POR_PAGINA, paginaAtual * LIVROS_POR_PAGINA);
+
+      document.getElementById("titulo-catalogo").textContent = textoBuscado
+        ? `Resultados para “${lerParametroDaUrl("q")}”`
+        : (categoriaEscolhida ? nomeDaCategoria(categoriaEscolhida) : "Catálogo");
+      document.getElementById("resumo-catalogo").textContent =
+        `${livros.length} ${livros.length === 1 ? "livro encontrado" : "livros encontrados"}`;
+
+      document.getElementById("resultado").innerHTML = livrosDaPagina.length
+        ? livrosDaPagina.map(htmlCartao).join("")
+        : `<p class="vazio" style="grid-column:1/-1">Nenhum livro encontrado. Tente outra busca.</p>`;
+
+      // Botões de categoria ("Todas" + as do banco).
+      document.getElementById("chips").innerHTML =
+        [{ id_categoria: 0, nome: "Todas" }, ...CATEGORIAS].map(categoria =>
+          `<button class="chip ${categoria.id_categoria === categoriaEscolhida ? "ativo" : ""}" data-id-categoria="${categoria.id_categoria}">${categoria.nome}</button>`
+        ).join("");
+
+      // Paginação: ‹ 1 2 3 ›
+      let botoes = `<button data-pagina="${paginaAtual - 1}" ${paginaAtual === 1 ? "disabled" : ""} aria-label="Anterior">‹</button>`;
+      for (let numero = 1; numero <= totalDePaginas; numero++) {
+        botoes += `<button data-pagina="${numero}" class="${numero === paginaAtual ? "ativo" : ""}">${numero}</button>`;
+      }
+      botoes += `<button data-pagina="${paginaAtual + 1}" ${paginaAtual === totalDePaginas ? "disabled" : ""} aria-label="Próxima">›</button>`;
+      document.getElementById("paginacao").innerHTML = botoes;
+    }
+
+    // Clique numa categoria.
+    document.getElementById("chips").addEventListener("click", evento => {
+      if (!evento.target.dataset.idCategoria) return;
+      categoriaEscolhida = Number(evento.target.dataset.idCategoria);
+      paginaAtual = 1;
+      mostrarCatalogo();
+    });
+    // Clique num número de página.
+    document.getElementById("paginacao").addEventListener("click", evento => {
+      if (!evento.target.dataset.pagina || evento.target.disabled) return;
+      paginaAtual = Number(evento.target.dataset.pagina);
+      mostrarCatalogo();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    // Troca da ordenação.
+    document.getElementById("ordem").addEventListener("change", () => { paginaAtual = 1; mostrarCatalogo(); });
+
+    // Links do menu podem já vir com uma ordem (catalogo.html?ordem=menor).
+    if (lerParametroDaUrl("ordem")) document.getElementById("ordem").value = lerParametroDaUrl("ordem");
+    mostrarCatalogo();
+  </script>
+</body>
+</html>

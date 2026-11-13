@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EntrePáginas · Livro</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Cabeçalho: logo, menu Categorias, busca, carrinho e conta -->
+  <header class="topo">
+    <div class="container topo__barra">
+      <a href="index.html" class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>
+        EntrePáginas
+      </a>
+      <div class="menu-cat" id="menu-cat">
+        <button class="menu-cat__botao" type="button" aria-expanded="false" aria-controls="painel-cat">
+          Categorias
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="menu-cat__painel" id="painel-cat">
+          <div class="container menu-cat__conteudo">
+            <div>
+              <h3>Explorar</h3>
+              <ul>
+                <li><a href="catalogo.html">Todos os livros</a></li>
+                <li><a href="catalogo.html?ordem=recentes">Novidades</a></li>
+                <li><a href="catalogo.html?ordem=menor">Menores preços</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3>Categorias</h3>
+              <ul class="menu-cat__lista" id="lista-categorias"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <form class="busca" action="catalogo.html" method="get" role="search">
+        <input type="search" name="q" placeholder="Buscar por título ou autor" aria-label="Buscar">
+        <button type="submit" aria-label="Buscar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        </button>
+      </form>
+      <nav class="acoes">
+        <a href="carrinho.html" class="icone-btn" aria-label="Carrinho">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>
+          <span id="contador-carrinho" class="contador oculto">0</span>
+        </a>
+        <a href="login.html" class="icone-btn" id="link-conta" aria-label="Minha conta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+        </a>
+      </nav>
+    </div>
+  </header>
+  <!-- Conteúdo da página -->
+  <main class="container" id="pagina-livro">
+    <nav class="migalhas" id="migalhas"></nav>
+
+    <section class="produto">
+      <div id="capa"></div>
+      <div class="produto__info">
+        <h1 id="titulo"></h1>
+        <p class="produto__autor" id="autor"></p>
+        <div class="produto__preco" id="preco"></div>
+        <div class="estoque" id="estoque"></div> <span class="no-carrinho" id="no-carrinho"></span>
+        <div class="produto__botoes">
+          <button class="btn" id="botao-carrinho">Adicionar ao carrinho</button>
+          <button class="btn btn--contorno" id="botao-comprar">Comprar agora</button>
+        </div>
+        <div class="aviso-emprestimo" id="emprestimo"></div>
+      </div>
+    </section>
+
+    <section class="blocos">
+      <div class="bloco">
+        <h2>Descrição</h2>
+        <p id="descricao"></p>
+      </div>
+      <div class="bloco">
+        <h2>Informações do produto</h2>
+        <table class="ficha"><tbody id="ficha"></tbody></table>
+      </div>
+    </section>
+
+    <section class="secao">
+      <div class="secao__titulo"><h2>Da mesma categoria</h2></div>
+      <div class="grade" id="relacionados"></div>
+    </section>
+  </main>
+  <!-- Rodapé -->
+  <footer class="rodape">
+    <div class="container">
+      <span>© 2026 EntrePáginas · Empréstimo e venda de livros</span>
+      <span>Retirada e devolução de empréstimos no balcão</span>
+    </div>
+  </footer>
+  <!-- Arquivos JS usados por todas as páginas (a ordem importa) -->
+  <script src="js/config.js"></script>
+  <script src="js/dados.js"></script>
+  <script src="js/banco.js"></script>
+  <script src="js/app.js"></script>
+  <!-- Código desta página -->
+  <script>
+    // Livro aberto (livro.html?id=9). Se o id não existir, mostra o primeiro.
+    const livro = LIVROS.find(livroDaLista => livroDaLista.id_livro === Number(lerParametroDaUrl("id"))) || LIVROS[0];
+    const categoria = nomeDaCategoria(livro.id_categoria);
+    const botaoCarrinho = document.getElementById("botao-carrinho");
+    const botaoComprar = document.getElementById("botao-comprar");
+    document.title = `${livro.titulo} · EntrePáginas`;
+
+    // Caminho no topo: Início / Categoria / Título
+    document.getElementById("migalhas").innerHTML =
+      `<a href="index.html">Início</a> / <a href="catalogo.html?categoria=${livro.id_categoria}">${categoria}</a> / ${livro.titulo}`;
+    document.getElementById("capa").innerHTML = htmlCapa(livro);
+    document.getElementById("titulo").textContent = livro.titulo;
+    // Cada autor vira um link que busca os livros dele.
+    document.getElementById("autor").innerHTML = "por " + livro.autores
+      .map(autor => `<a href="catalogo.html?q=${encodeURIComponent(autor)}">${autor}</a>`).join(", ");
+    document.getElementById("preco").textContent = formatarPreco(livro.preco_venda);
+
+    // Estoque para venda. Sem estoque, os botões de compra ficam desligados.
+    const textoDoEstoque = document.getElementById("estoque");
+    if (livro.disponiveis_venda > 0) {
+      textoDoEstoque.textContent = `${livro.disponiveis_venda} ${livro.disponiveis_venda === 1 ? "exemplar" : "exemplares"} em estoque`;
+    } else {
+      textoDoEstoque.textContent = "Esgotado para venda";
+      textoDoEstoque.classList.add("estoque--esgotado");
+      botaoCarrinho.disabled = true;
+      botaoComprar.disabled = true;
+    }
+
+    // Empréstimo é feito no balcão; aqui só informa se há exemplar livre.
+    document.getElementById("emprestimo").innerHTML = livro.disponiveis_emprestimo > 0
+      ? `<strong>Disponível para empréstimo:</strong> ${livro.disponiveis_emprestimo} ${livro.disponiveis_emprestimo === 1 ? "exemplar" : "exemplares"}. Retire no balcão com prazo de ${PRAZO_EMPRESTIMO} dias.`
+      : `<strong>Empréstimo indisponível:</strong> todos os exemplares estão emprestados no momento.`;
+
+    // Descrição e ficha técnica.
+    document.getElementById("descricao").textContent = DESCRICAO_PADRAO;
+    const fichaTecnica = [
+      ["Autor(es)", livro.autores.join(", ")],
+      ["Categoria", categoria],
+      ["Ano de publicação", livro.ano_publicacao],
+      ["ISBN", livro.isbn]
+    ];
+    document.getElementById("ficha").innerHTML = fichaTecnica
+      .map(([nomeDoCampo, valor]) => `<tr><th>${nomeDoCampo}</th><td>${valor}</td></tr>`).join("");
+
+    // Até 4 livros da mesma categoria.
+    document.getElementById("relacionados").innerHTML = LIVROS
+      .filter(outroLivro => outroLivro.id_categoria === livro.id_categoria && outroLivro.id_livro !== livro.id_livro)
+      .slice(0, 4).map(htmlCartao).join("");
+
+    // Desliga "Adicionar" quando o carrinho já tem todo o estoque desse livro.
+    function atualizarBotoes() {
+      const quantidade = quantidadeNoCarrinho(livro.id_livro);
+      const chegouNoLimite = quantidade >= livro.disponiveis_venda;
+      botaoCarrinho.disabled = chegouNoLimite;
+      botaoCarrinho.textContent = chegouNoLimite && livro.disponiveis_venda > 0 ? "Limite do estoque no carrinho" : "Adicionar ao carrinho";
+      document.getElementById("no-carrinho").textContent = quantidade ? `${quantidade} no seu carrinho` : "";
+    }
+    botaoCarrinho.addEventListener("click", () => {
+      if (adicionarAoCarrinho(livro.id_livro)) mostrarAviso("Livro adicionado ao carrinho");
+      atualizarBotoes();
+    });
+    // "Comprar agora" coloca um exemplar no carrinho (se couber) e vai direto para ele.
+    botaoComprar.addEventListener("click", () => {
+      if (!exigirLoginCliente()) return;
+      if (quantidadeNoCarrinho(livro.id_livro) < livro.disponiveis_venda) adicionarAoCarrinho(livro.id_livro);
+      window.location.href = "carrinho.html";
+    });
+    ajustarCarrinhoAoEstoque();
+    if (livro.disponiveis_venda > 0) atualizarBotoes();
+  </script>
+</body>
+</html>

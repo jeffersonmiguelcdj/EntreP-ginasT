@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EntrePáginas · Carrinho</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Cabeçalho: logo, menu Categorias, busca, carrinho e conta -->
+  <header class="topo">
+    <div class="container topo__barra">
+      <a href="index.html" class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>
+        EntrePáginas
+      </a>
+      <div class="menu-cat" id="menu-cat">
+        <button class="menu-cat__botao" type="button" aria-expanded="false" aria-controls="painel-cat">
+          Categorias
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <div class="menu-cat__painel" id="painel-cat">
+          <div class="container menu-cat__conteudo">
+            <div>
+              <h3>Explorar</h3>
+              <ul>
+                <li><a href="catalogo.html">Todos os livros</a></li>
+                <li><a href="catalogo.html?ordem=recentes">Novidades</a></li>
+                <li><a href="catalogo.html?ordem=menor">Menores preços</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3>Categorias</h3>
+              <ul class="menu-cat__lista" id="lista-categorias"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <form class="busca" action="catalogo.html" method="get" role="search">
+        <input type="search" name="q" placeholder="Buscar por título ou autor" aria-label="Buscar">
+        <button type="submit" aria-label="Buscar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        </button>
+      </form>
+      <nav class="acoes">
+        <a href="carrinho.html" class="icone-btn" aria-label="Carrinho">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>
+          <span id="contador-carrinho" class="contador oculto">0</span>
+        </a>
+        <a href="login.html" class="icone-btn" id="link-conta" aria-label="Minha conta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+        </a>
+      </nav>
+    </div>
+  </header>
+  <!-- Conteúdo da página -->
+  <main class="container">
+    <div class="cabecalho-pagina"><h1>Carrinho</h1><p id="quantidade-de-itens"></p></div>
+    <div class="carrinho">
+      <section id="itens"></section>
+      <aside class="caixa-resumo" id="resumo">
+        <h2>Resumo</h2>
+        <div class="linha"><span>Subtotal</span><span id="subtotal"></span></div>
+        <div class="linha total"><span>Total</span><span id="total"></span></div>
+        <div class="pagamentos" id="pagamentos"></div>
+        <button class="btn btn--bloco" id="finalizar">Finalizar compra</button>
+        <p class="auth__nota" id="nota-login"></p>
+      </aside>
+    </div>
+  </main>
+  <!-- Rodapé -->
+  <footer class="rodape">
+    <div class="container">
+      <span>© 2026 EntrePáginas · Empréstimo e venda de livros</span>
+      <span>Retirada e devolução de empréstimos no balcão</span>
+    </div>
+  </footer>
+  <!-- Arquivos JS usados por todas as páginas (a ordem importa) -->
+  <script src="js/config.js"></script>
+  <script src="js/dados.js"></script>
+  <script src="js/banco.js"></script>
+  <script src="js/app.js"></script>
+  <!-- Código desta página -->
+  <script>
+    // O carrinho só existe para quem está conectado.
+    const sessao = Sessao.atual();
+    if (!sessao) window.location.replace("login.html?voltar=carrinho.html");
+
+    // Desenha a lista de livros do carrinho e o resumo com o total.
+    function mostrarCarrinho() {
+      const idsNoCarrinho = lerCarrinho();
+      // Junta os ids repetidos: [9, 9, 3] vira { 9: 2, 3: 1 }.
+      const quantidadePorLivro = {};
+      idsNoCarrinho.forEach(idLivro => { quantidadePorLivro[idLivro] = (quantidadePorLivro[idLivro] || 0) + 1; });
+      const itens = Object.entries(quantidadePorLivro).map(([idLivro, quantidade]) => ({
+        livro: LIVROS.find(livro => livro.id_livro === Number(idLivro)),
+        quantidade
+      }));
+      const total = itens.reduce((soma, item) => soma + item.livro.preco_venda * item.quantidade, 0);
+
+      document.getElementById("quantidade-de-itens").textContent = idsNoCarrinho.length
+        ? `${idsNoCarrinho.length} ${idsNoCarrinho.length === 1 ? "item" : "itens"}` : "";
+
+      document.getElementById("itens").innerHTML = itens.length ? itens.map(({ livro, quantidade }) => {
+        const semMaisEstoque = quantidade >= livro.disponiveis_venda;
+        return `
+        <div class="item-carrinho">
+          <a href="livro.html?id=${livro.id_livro}">${htmlCapa(livro)}</a>
+          <div>
+            <h3>${livro.titulo}</h3>
+            <p>${livro.autores.join(", ")} · ${formatarPreco(livro.preco_venda)} cada</p>
+            <div class="quantidade">
+              <button data-diminuir="${livro.id_livro}" aria-label="Diminuir">−</button>
+              <span>${quantidade}</span>
+              <button data-aumentar="${livro.id_livro}" aria-label="Aumentar" ${semMaisEstoque ? "disabled" : ""}>+</button>
+              <small>${semMaisEstoque ? "máximo em estoque" : `${livro.disponiveis_venda} disponíveis`}</small>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <strong>${formatarPreco(livro.preco_venda * quantidade)}</strong><br>
+            <button class="btn btn--link btn--perigo" data-remover="${livro.id_livro}">Remover</button>
+          </div>
+        </div>`;
+      }).join("")
+        : `<p class="vazio">Seu carrinho está vazio. <a href="catalogo.html" style="color:var(--destaque)">Ver o catálogo</a></p>`;
+
+      document.getElementById("subtotal").textContent = formatarPreco(total);
+      document.getElementById("total").textContent = formatarPreco(total);
+      document.getElementById("finalizar").disabled = !idsNoCarrinho.length;
+
+      // Recado embaixo do botão: quem está comprando (funcionário não compra por aqui).
+      document.getElementById("nota-login").innerHTML =
+        !sessao ? "Você precisa entrar na sua conta para finalizar."
+        : sessao.tipo === "Cliente" ? `Comprando como <strong>${sessao.nome}</strong>`
+        : `Você está conectado como funcionário (${sessao.nome}). Vendas de funcionário são feitas pelo <a href="painel.html?secao=vendas" style="color:var(--destaque)">painel</a>. Para comprar como cliente, <button class="btn btn--link" id="trocar-conta">entre com uma conta de cliente</button>.`;
+    }
+
+    // Opções de pagamento vindas do banco (a segunda já vem marcada).
+    document.getElementById("pagamentos").innerHTML = FORMAS_PAGAMENTO.map((forma, posicao) =>
+      `<label><input type="radio" name="pagamento" value="${forma.id_forma_pagamento}" ${posicao === 1 ? "checked" : ""}> ${forma.tipo}</label>`).join("");
+
+    // Botões "+", "−" e "Remover" de cada livro.
+    document.getElementById("itens").addEventListener("click", evento => {
+      const botao = evento.target.dataset;
+      if (botao.aumentar) adicionarAoCarrinho(Number(botao.aumentar));
+      else if (botao.diminuir) removerUmDoCarrinho(Number(botao.diminuir));
+      else if (botao.remover) removerDoCarrinho(Number(botao.remover));
+      else return;
+      mostrarCarrinho();
+    });
+
+    // Finalizar: o Java grava a venda e os itens; depois o carrinho é esvaziado.
+    document.getElementById("finalizar").addEventListener("click", () => {
+      if (!sessao) { window.location.href = "login.html?voltar=carrinho.html"; return; }
+      if (sessao.tipo !== "Cliente") { mostrarAviso("Entre com uma conta de cliente para comprar"); return; }
+      const idFormaPagamento = Number(document.querySelector("input[name=pagamento]:checked").value);
+      try {
+        const venda = VendaDAO.registrar(sessao.id, lerCarrinho(), idFormaPagamento, null);
+        salvarCarrinho([]);
+        window.location.href = `conta.html?aba=compras&nova=${venda.id_venda}`;
+      } catch (erro) { mostrarAviso(erro.message); }
+    });
+
+    // Funcionário conectado pode trocar para uma conta de cliente.
+    document.getElementById("resumo").addEventListener("click", evento => {
+      if (evento.target.id === "trocar-conta") { Sessao.sair(); window.location.replace("login.html?voltar=carrinho.html"); }
+    });
+
+    if (ajustarCarrinhoAoEstoque()) mostrarAviso("Ajustamos o carrinho ao estoque disponível");
+    mostrarCarrinho();
+  </script>
+</body>
+</html>
