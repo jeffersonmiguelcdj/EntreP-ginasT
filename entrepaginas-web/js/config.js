@@ -1,1 +1,1 @@
-const API_URL = "https://accountability-map-tabs-gathered.trycloudflare.com";
+const API_URL = "https://entrep-ginast.onrender.com";
